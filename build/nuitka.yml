@@ -1,0 +1,8 @@
+- module-name: 'aiohttp_apispec'
+  data-files:
+    dirs:
+      - 'static'
+- module-name: 'pony.orm'
+  implicit-imports:
+    - depends:
+        - 'pony.orm.dbproviders.sqlite.*'

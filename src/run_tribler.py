@@ -13,8 +13,6 @@ from pathlib import Path
 
 import pystray
 from PIL import Image
-from tribler.core.session import Session
-from tribler.tribler_config import TriblerConfigManager
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +51,9 @@ async def main() -> None:
     """
     The main script entry point.
     """
+    from tribler.core.session import Session
+    from tribler.tribler_config import TriblerConfigManager
+
     parsed_args = parse_args()
     logging.basicConfig(level=parsed_args["log_level"], stream=sys.stdout)
     logger.info("Run Tribler: %s", parsed_args)
@@ -85,7 +86,7 @@ async def main() -> None:
     session = Session(config)
     await session.start()
 
-    image_path = Path(__file__).absolute() / "../tribler/ui/public/tribler.png"
+    image_path = (Path("dist") / "tribler.png").absolute()  # TODO: Temporary fix for build
     image = Image.open(image_path.resolve())
     url = f"http://localhost:{session.rest_manager.get_api_port()}/ui/#/downloads/all?key={config.get('api/key')}"
     menu = (pystray.MenuItem('Open', lambda: webbrowser.open_new_tab(url)),
@@ -100,5 +101,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        os.add_dll_directory(str(Path(".").absolute()))
     asyncio.set_event_loop(asyncio.SelectorEventLoop())
     asyncio.run(main())
