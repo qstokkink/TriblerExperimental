@@ -1,3 +1,5 @@
+aiohttp==3.9.5  # TODO: Temporary fix
+
 -r pyipv8/requirements.txt
 
 bitarray
@@ -10,6 +12,3 @@ pony
 pystray
 pywin32;sys_platform=="win32"
 
-PyQt5
-numpy
-pyqtgraph

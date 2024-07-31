@@ -1,0 +1,60 @@
+# Supported builds: https://cx-freeze.readthedocs.io/en/latest/builtdist.html
+
+name: Build
+on: pull_request  # TODO: Only run on workflow_dispatch
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest] # TODO: Run all [macos-12, ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check-out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - name: Fetch again for SCM versioning
+        run: |
+          git fetch --prune --unshallow
+          git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: |
+            **/requirements-build.txt
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade -r requirements-build.txt
+      - name: Setup npm
+        uses: actions/setup-node@v4
+      - name: Build npm
+        run: |
+          cd src/tribler/ui/
+          npm install
+          npm run build
+      - name: Build Executables (AppImage, deb, rpm)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install -y --allow-downgrades alien cpio=2.13+dfsg-7 fakeroot rpm
+          python setup.py bdist_rpm
+          python setup.py bdist_deb
+        # TODO: AppImage
+      - name: Build Executables (dmg, app)
+        if: matrix.os == 'macos-12'
+        run: |
+          python setup.py bdist_mac
+          python setup.py bdist_dmg
+      - name: Build Executables (msi)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python setup.py bdist_msi
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ runner.os }} Build
+          path: |
+            dist/*

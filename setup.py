@@ -1,72 +1,33 @@
 from __future__ import annotations
 
-import os
 import re
-import shutil
+import sys
+from itertools import chain
 from pathlib import Path
 
+from cx_Freeze import Executable, setup
+from packaging.version import VERSION_PATTERN
+from pip._internal.network.session import PipSession
+from pip._internal.req import parse_requirements
 from setuptools import find_packages
+from setuptools_scm import Version, get_version
 
-from build.win.build import setup, setup_executables, setup_options
+sys.path.insert(0, 'src')
+sys.path.insert(0, 'pyipv8')
 
 
-def read_version_from_file(file_path: str) -> str:
+class TriblerVersion(Version):
     """
-    Get the version from the file at the given file path.
+    Use "exp" instead of "dev" for the dev tag identifier.
     """
-    with open(file_path, encoding="utf-8") as file:
-        file_content = file.read()
-    # Use regular expression to find the version pattern
-    version_match = re.search(r"^version_id = ['\"]([^'\"]*)['\"]", file_content, re.M)
-    if version_match:
-        version_str = version_match.group(1)
-        return version_str.split("-")[0]
-    msg = "Unable to find version string."
-    raise RuntimeError(msg)
 
+    _regex = re.compile(r"^\s*" + VERSION_PATTERN.replace("(?P<dev_l>dev)", "(?P<dev_l>exp)") + r"\s*$",
+                        re.VERBOSE | re.IGNORECASE)
 
-def read_requirements(file_name: str, directory: str = ".") -> list[str]:
-    """
-    Read the pip requirements from the given file name in the given directory.
-    """
-    file_path = os.path.join(directory, file_name)
-    if not os.path.exists(file_path):
-        return []
-    requirements = []
-    with open(file_path, encoding="utf-8") as file:
-        for line in file:
-            # Check for a nested requirements file
-            if line.startswith("-r"):
-                nested_file = line.split(" ")[1].strip()
-                requirements += read_requirements(nested_file, directory)
-            elif not line.startswith("#") and line.strip() != "":
-                requirements.append(line.strip().split("#")[0].strip())
-    return requirements
-
-
-base_dir = os.path.dirname(os.path.abspath(__file__))
-install_requires = read_requirements("requirements-build.txt", base_dir)
-extras_require = {
-    "dev": read_requirements("requirements-test.txt", base_dir),
-}
-
-# Copy src/run_tribler.py --> src/tribler/run.py to make it accessible in entry_points scripts.
-# See: entry_points={"gui_scripts": ["tribler=tribler.run:main"]} in setup() below.
-shutil.copy("src/run_tribler.py", "src/tribler/run.py")
-
-# Read the version from the version file: src/tribler/core/version.py
-# Note that, for version.py to include the correct version, it should be generated first using git commands.
-# For example:
-#    git describe --tags | python -c "import sys; print(next(sys.stdin).lstrip("v"))" > .TriblerVersion
-#    git rev-parse HEAD > .TriblerCommit
-# Then, the version.py file can be generated using the following command:
-#    python build/update_version.py
-version_file = os.path.join("src", "tribler", "core", "version.py")
-version = read_version_from_file(version_file)
 
 setup(
     name="tribler",
-    version=version,
+    version=get_version(version_cls=TriblerVersion, normalize=True),
     description="Privacy enhanced BitTorrent client with P2P content discovery",
     long_description=Path("README.rst").read_text(encoding="utf-8"),
     long_description_content_type="text/x-rst",
@@ -74,29 +35,34 @@ setup(
     author_email="info@tribler.org",
     url="https://github.com/Tribler/tribler",
     keywords="BitTorrent client, file sharing, peer-to-peer, P2P, TOR-like network",
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     packages=find_packages(where="src"),
-    package_dir={"": "src"},
     include_package_data=True,
-    install_requires=install_requires,
-    extras_require=extras_require,
-    entry_points={
-        "gui_scripts": [
-            "tribler=tribler.run:main",
-        ]
-    },
+    install_requires=[str(r.requirement) for r in
+                      chain(parse_requirements("requirements.txt", session=PipSession()),
+                            parse_requirements("pyipv8/requirements.txt", session=PipSession()))
+                      if r is not None],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "Intended Audience :: End Users/Desktop",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Topic :: Communications :: File Sharing",
         "Topic :: Security :: Cryptography",
         "Operating System :: OS Independent",
     ],
-    options=setup_options,
-    executables=setup_executables
+    options={
+        "build_exe": {
+            "packages": ["aiohttp_apispec", "pkg_resources", "requests", "libtorrent", "ssl"],
+            "includes": ["tribler.core", "tribler.ui"],
+            "excludes": [".git", "tribler.test_unit", "tribler.test_integration", "tribler.run_unit_tests", "venv"],
+            "include_files": ["src/run_tribler.py"],
+            "include_msvcr": True,
+            "build_exe": "dist/tribler"
+        }
+    },
+    executables=[Executable("src/run_tribler.py", base="gui", icon="build/icons/tribler",
+                            target_name="Tribler" if sys.platform != "linux" else "tribler")]
 )
